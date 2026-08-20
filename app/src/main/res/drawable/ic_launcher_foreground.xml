@@ -1,33 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
 <!--
-  ~ Copyright (C) 2026 The Android Open Source Project
-  ~
-  ~ Licensed under the Apache License, Version 2.0 (the "License");
-  ~ you may not use this file except in compliance with the License.
-  ~ You may obtain a copy of the License at
-  ~
-  ~      http://www.apache.org/licenses/LICENSE-2.0
-  ~
-  ~ Unless required by applicable law or agreed to in writing, software
-  ~ distributed under the License is distributed on an "AS IS" BASIS,
-  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  ~ See the License for the specific language governing permissions and
-  ~ limitations under the License.
-  -->
+  Adaptive-icon foreground: a single line-drawn leaf.
+
+  The 108dp viewport has a 72dp safe zone in the middle (18..90 on both
+  axes) — anything outside that can be cropped away by whatever mask the
+  launcher applies, so the whole drawing is kept inside it. The leaf runs
+  y=23 (tip) to y=86 (end of the stem), centred at 54.5.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24"
-    android:tint="#000000">
-  <group android:scaleX="0.58"
-      android:scaleY="0.58"
-      android:translateX="5.04"
-      android:translateY="5.04">
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Blade. Two mirrored pairs of curves: tip to widest point, then down
+         to the base where the stem takes over. -->
     <path
-        android:fillColor="@android:color/white"
-        android:pathData="M11.99,2C6.47,2 2,6.48 2,12s4.47,10 9.99,10C17.52,22 22,17.52 22,12S17.52,2 11.99,2zM12,20c-4.42,0 -8,-3.58 -8,-8s3.58,-8 8,-8 8,3.58 8,8 -3.58,8 -8,8z"/>
+        android:pathData="M54,23 C62,33 70,45 70,55 C70,65 63,72 54,76 C45,72 38,65 38,55 C38,45 46,33 54,23 Z"
+        android:strokeColor="#1C4034"
+        android:strokeWidth="3.5"
+        android:strokeLineJoin="round"
+        android:strokeLineCap="round" />
+
+    <!-- Midrib, continuing past the blade to become the stem. -->
     <path
-        android:fillColor="@android:color/white"
-        android:pathData="M12.5,7H11v6l5.25,3.15 0.75,-1.23 -4.5,-2.67z"/>
-  </group>
+        android:pathData="M54,29 L54,86"
+        android:strokeColor="#1C4034"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round" />
+
+    <!-- Three pairs of veins, angling up and out, shortening toward the tip.
+         They stop short of the outline rather than meeting it. -->
+    <path
+        android:pathData="M54,62 L63,54 M54,62 L45,54"
+        android:strokeColor="#1C4034"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M54,53 L63,45 M54,53 L45,45"
+        android:strokeColor="#1C4034"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M54,44.5 L60,38.5 M54,44.5 L48,38.5"
+        android:strokeColor="#1C4034"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round" />
 </vector>

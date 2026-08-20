@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#3DBCDC</color>
+    <!-- The parchment the rest of the app is drawn on, rather than a colour
+         that only exists on the launcher. -->
+    <color name="ic_launcher_background">#F2EDE6</color>
 </resources>
