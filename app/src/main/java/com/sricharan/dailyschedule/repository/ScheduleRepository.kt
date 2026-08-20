@@ -4,6 +4,8 @@ import com.sricharan.dailyschedule.data.Completion
 import com.sricharan.dailyschedule.data.DayReflection
 import com.sricharan.dailyschedule.data.ScheduleDao
 import com.sricharan.dailyschedule.data.ScheduleItem
+import com.sricharan.dailyschedule.data.SkippedOccurrence
+import com.sricharan.dailyschedule.data.Thought
 import kotlinx.coroutines.flow.Flow
 
 class ScheduleRepository(private val dao: ScheduleDao) {
@@ -15,7 +17,10 @@ class ScheduleRepository(private val dao: ScheduleDao) {
     suspend fun saveItem(item: ScheduleItem): Long =
         if (item.id == 0L) dao.insertItem(item) else { dao.updateItem(item); item.id }
 
-    suspend fun deleteItem(item: ScheduleItem) = dao.deleteItem(item)
+    suspend fun deleteItem(item: ScheduleItem) {
+        dao.clearSkipsForItem(item.id)
+        dao.deleteItem(item)
+    }
 
     fun getCompletionsForItem(itemId: Long): Flow<List<Completion>> =
         dao.getCompletionsForItem(itemId)
@@ -50,4 +55,31 @@ class ScheduleRepository(private val dao: ScheduleDao) {
         if (note.isBlank()) dao.deleteReflection(date)
         else dao.saveReflection(DayReflection(date = date, note = note.trim()))
     }
+
+    // --- Thoughts ---
+
+    fun getThoughts(date: String): Flow<List<Thought>> = dao.getThoughts(date)
+
+    suspend fun addThought(date: String, text: String) {
+        if (text.isBlank()) return
+        dao.insertThought(Thought(date = date, text = text.trim()))
+    }
+
+    suspend fun deleteThought(thought: Thought) = dao.deleteThought(thought)
+
+    // --- Skipped occurrences ---
+
+    fun getAllSkips(): Flow<List<SkippedOccurrence>> = dao.getAllSkips()
+
+    /**
+     * Lets go of one day of a routine without touching the routine itself.
+     * Any completion recorded for that day goes with it, so the skipped day
+     * doesn't keep counting as tended.
+     */
+    suspend fun skipOccurrence(itemId: Long, date: String) {
+        dao.insertSkip(SkippedOccurrence(scheduleItemId = itemId, date = date))
+        dao.clearCompletion(itemId, date)
+    }
+
+    suspend fun unskipOccurrence(itemId: Long, date: String) = dao.clearSkip(itemId, date)
 }

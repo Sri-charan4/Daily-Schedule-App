@@ -30,6 +30,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,8 +43,20 @@ import androidx.compose.ui.unit.dp
 import com.sricharan.dailyschedule.data.ScheduleItem
 import com.sricharan.dailyschedule.domain.DAY_CODES
 import com.sricharan.dailyschedule.domain.recurrenceDaySet
+import com.sricharan.dailyschedule.domain.scheduledDate
+import com.sricharan.dailyschedule.domain.timeOfDay
+import com.sricharan.dailyschedule.ui.components.DateChoiceDialog
+import com.sricharan.dailyschedule.ui.components.LetItGoDialog
+import com.sricharan.dailyschedule.ui.components.PickerRow
+import com.sricharan.dailyschedule.ui.components.TimeChoiceDialog
+import com.sricharan.dailyschedule.ui.components.soften
 import com.sricharan.dailyschedule.viewmodel.ScheduleViewModel
 import kotlinx.coroutines.launch
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+private val STORED_TIME = DateTimeFormatter.ofPattern("HH:mm")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,6 +66,7 @@ fun AddEditScreen(
     onDone: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val selectedDate by viewModel.selectedDate.collectAsState()
 
     var loaded by remember { mutableStateOf(existingItemId == null) }
     var existing by remember { mutableStateOf<ScheduleItem?>(null) }
@@ -61,8 +75,17 @@ fun AddEditScreen(
     var notes by remember { mutableStateOf("") }
     var isRecurring by remember { mutableStateOf(false) }
     var selectedDays by remember { mutableStateOf(setOf<String>()) }
-    var recurrenceTime by remember { mutableStateOf("") }
     var reminderEnabled by remember { mutableStateOf(false) }
+
+    // Something new lands on the day you were looking at — that's almost always
+    // the day you meant. "Someday" stays one tap away in the date picker.
+    var hasDate by remember { mutableStateOf(true) }
+    var chosenDate by remember { mutableStateOf(selectedDate) }
+    var chosenTime by remember { mutableStateOf<LocalTime?>(null) }
+
+    var pickingDate by remember { mutableStateOf(false) }
+    var pickingTime by remember { mutableStateOf(false) }
+    var lettingGo by remember { mutableStateOf(false) }
 
     // Actually load the item being edited, rather than silently starting blank
     // and saving a duplicate (which is what this screen used to do).
@@ -74,10 +97,50 @@ fun AddEditScreen(
                 notes = item.notes
                 isRecurring = item.isRecurring
                 selectedDays = item.recurrenceDaySet()
-                recurrenceTime = item.recurrenceTime
                 reminderEnabled = item.reminderEnabled
+                hasDate = item.dateTime != null
+                chosenDate = item.scheduledDate() ?: selectedDate
+                chosenTime = item.timeOfDay()
             }
             loaded = true
+        }
+    }
+
+    if (pickingDate) {
+        DateChoiceDialog(
+            initial = if (hasDate) chosenDate else null,
+            onDismiss = { pickingDate = false },
+            onClear = { hasDate = false; pickingDate = false },
+            onPick = { date -> chosenDate = date; hasDate = true; pickingDate = false }
+        )
+    }
+
+    if (pickingTime) {
+        TimeChoiceDialog(
+            initial = chosenTime,
+            onDismiss = { pickingTime = false },
+            onClear = { chosenTime = null; pickingTime = false },
+            onPick = { time -> chosenTime = time; pickingTime = false }
+        )
+    }
+
+    existing?.let { item ->
+        if (lettingGo) {
+            LetItGoDialog(
+                title = item.title,
+                date = selectedDate,
+                onSkipThisDay = {
+                    lettingGo = false
+                    viewModel.skipOnSelectedDate(item)
+                    onDone()
+                },
+                onDeleteEntirely = {
+                    lettingGo = false
+                    viewModel.deleteItem(item)
+                    onDone()
+                },
+                onDismiss = { lettingGo = false }
+            )
         }
     }
 
@@ -147,13 +210,19 @@ fun AddEditScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                 )
-                SoftField(
-                    value = recurrenceTime,
-                    onValueChange = { recurrenceTime = it },
-                    label = "Around what time?",
-                    placeholder = "07:30 — or leave blank"
+            } else {
+                PickerRow(
+                    label = "Which day",
+                    value = if (hasDate) chosenDate.soften() else "Someday — no date on it",
+                    onClick = { pickingDate = true }
                 )
             }
+
+            PickerRow(
+                label = "Around what time",
+                value = chosenTime?.soften() ?: "No set time",
+                onClick = { pickingTime = true }
+            )
 
             ToggleRow(
                 title = "A gentle nudge",
@@ -171,15 +240,29 @@ fun AddEditScreen(
                         title = title.trim(),
                         notes = notes.trim(),
                         category = existing?.category ?: "General",
-                        dateTime = existing?.dateTime,
+                        dateTime = when {
+                            // A routine is described by its days, not by a date.
+                            isRecurring -> null
+                            !hasDate -> null
+                            else -> chosenDate
+                                .atTime(chosenTime ?: LocalTime.MIDNIGHT)
+                                .atZone(ZoneId.systemDefault())
+                                .toInstant()
+                                .toEpochMilli()
+                        },
                         isRecurring = isRecurring,
                         recurrenceDays = selectedDays.joinToString(","),
-                        recurrenceTime = recurrenceTime.trim(),
+                        recurrenceTime = if (isRecurring) {
+                            chosenTime?.format(STORED_TIME).orEmpty()
+                        } else "",
                         reminderEnabled = reminderEnabled,
                         createdAt = existing?.createdAt ?: System.currentTimeMillis()
                     )
                     scope.launch {
                         viewModel.saveItem(item)
+                        // Follow it to wherever it landed, so it isn't saved onto
+                        // a day you then can't see.
+                        if (!isRecurring && hasDate) viewModel.selectDate(chosenDate)
                         onDone()
                     }
                 },
@@ -197,9 +280,15 @@ fun AddEditScreen(
             existing?.let { item ->
                 TextButton(
                     onClick = {
-                        scope.launch {
-                            viewModel.deleteItem(item)
-                            onDone()
+                        // A repeating item asks first: one day off and ending the
+                        // routine are two very different things.
+                        if (item.isRecurring) {
+                            lettingGo = true
+                        } else {
+                            scope.launch {
+                                viewModel.deleteItem(item)
+                                onDone()
+                            }
                         }
                     },
                     modifier = Modifier.fillMaxWidth()

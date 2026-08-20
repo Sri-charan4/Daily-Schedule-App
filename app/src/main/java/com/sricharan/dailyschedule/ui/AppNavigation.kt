@@ -36,6 +36,7 @@ fun AppNavigation() {
             MonthScreen(
                 viewModel = viewModel,
                 onBack = { navController.popBackStack() },
+                onAddClick = { navController.navigate("edit/-1") },
                 onItemClick = { id -> navController.navigate("edit/$id") }
             )
         }

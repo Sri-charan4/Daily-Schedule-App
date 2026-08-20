@@ -21,9 +21,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -66,15 +68,19 @@ private val DAY_HEADING = DateTimeFormatter.ofPattern("EEEE, d MMMM")
 fun MonthScreen(
     viewModel: ScheduleViewModel,
     onBack: () -> Unit,
+    onAddClick: () -> Unit,
     onItemClick: (Long) -> Unit
 ) {
     val allItems by viewModel.allItems.collectAsState()
     val selectedDate by viewModel.selectedDate.collectAsState()
     val doneIds by viewModel.doneOnSelectedDate.collectAsState()
     val tendedDates by viewModel.tendedDates.collectAsState()
+    val skipped by viewModel.skippedKeys.collectAsState()
 
     var visibleMonth by remember { mutableStateOf(YearMonth.from(selectedDate)) }
-    val dayItems = remember(allItems, selectedDate) { allItems.onDate(selectedDate) }
+    val dayItems = remember(allItems, selectedDate, skipped) {
+        allItems.onDate(selectedDate, skipped)
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -91,11 +97,24 @@ fun MonthScreen(
                     titleContentColor = MaterialTheme.colorScheme.onBackground
                 )
             )
+        },
+        floatingActionButton = {
+            // Adding from here lands on the day you're looking at, so planning
+            // ahead doesn't mean jumping back to today first.
+            ExtendedFloatingActionButton(
+                onClick = onAddClick,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                shape = MaterialTheme.shapes.extraLarge
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null)
+                Text("  Add something")
+            }
         }
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 32.dp),
+            contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item {
@@ -110,7 +129,7 @@ fun MonthScreen(
                 MonthGrid(
                     month = visibleMonth,
                     selectedDate = selectedDate,
-                    hasItemsOn = { date -> allItems.any { it.occursOn(date) } },
+                    hasItemsOn = { date -> allItems.any { it.occursOn(date, skipped) } },
                     tendedDates = tendedDates,
                     onSelect = viewModel::selectDate
                 )

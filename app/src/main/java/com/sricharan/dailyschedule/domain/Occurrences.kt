@@ -1,6 +1,7 @@
 package com.sricharan.dailyschedule.domain
 
 import com.sricharan.dailyschedule.data.ScheduleItem
+import com.sricharan.dailyschedule.data.SkippedOccurrence
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
@@ -44,8 +45,20 @@ fun ScheduleItem.whenLabel(): String {
     return "around " + time.format(DateTimeFormatter.ofPattern("h:mm a")).lowercase()
 }
 
-/** Does this item belong on [date]? */
-fun ScheduleItem.occursOn(date: LocalDate): Boolean = when {
+/** Identifies one day of one item, so skipped days can be looked up cheaply. */
+fun skipKey(itemId: Long, date: LocalDate): String = "$itemId@${date.dateKey()}"
+
+fun SkippedOccurrence.key(): String = "$scheduleItemId@$date"
+
+/**
+ * Does this item belong on [date]?
+ *
+ * [skipped] holds the individual days that were let go of one-at-a-time (see
+ * [SkippedOccurrence]); a day in there is simply absent, with the underlying
+ * routine left completely intact.
+ */
+fun ScheduleItem.occursOn(date: LocalDate, skipped: Set<String> = emptySet()): Boolean = when {
+    skipKey(id, date) in skipped -> false
     isRecurring -> {
         val days = recurrenceDaySet()
         // A recurring item with no days chosen is treated as an every-day
@@ -61,8 +74,11 @@ fun ScheduleItem.occursOn(date: LocalDate): Boolean = when {
 fun List<ScheduleItem>.someday(): List<ScheduleItem> =
     filter { !it.isRecurring && it.dateTime == null }
 
-fun List<ScheduleItem>.onDate(date: LocalDate): List<ScheduleItem> =
-    filter { it.occursOn(date) }.sortedWith(
+fun List<ScheduleItem>.onDate(
+    date: LocalDate,
+    skipped: Set<String> = emptySet()
+): List<ScheduleItem> =
+    filter { it.occursOn(date, skipped) }.sortedWith(
         compareBy(nullsLast()) { it.timeOfDay() }
     )
 

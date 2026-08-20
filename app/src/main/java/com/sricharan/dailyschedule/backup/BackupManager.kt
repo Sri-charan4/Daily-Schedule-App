@@ -33,11 +33,15 @@ class BackupManager(private val context: Context) {
         val items = db.scheduleDao().getAllItemsOnce()
         val completions = db.scheduleDao().getAllCompletionsOnce()
         val reflections = db.scheduleDao().getAllReflectionsOnce()
+        val thoughts = db.scheduleDao().getAllThoughtsOnce()
+        val skips = db.scheduleDao().getAllSkipsOnce()
 
         val backup = BackupData(
             items = items,
             completions = completions,
-            reflections = reflections
+            reflections = reflections,
+            thoughts = thoughts,
+            skips = skips
         )
         val jsonString = json.encodeToString(backup)
 
@@ -77,10 +81,14 @@ class BackupManager(private val context: Context) {
             val db = AppDatabase.getInstance(context)
             db.scheduleDao().clearAllCompletions()
             db.scheduleDao().clearAllReflections()
+            db.scheduleDao().clearAllThoughts()
+            db.scheduleDao().clearAllSkips()
             db.scheduleDao().clearAllItems()
             db.scheduleDao().insertAllItems(backup.items)
             db.scheduleDao().insertAllCompletions(backup.completions)
             db.scheduleDao().insertAllReflections(backup.reflections)
+            db.scheduleDao().insertAllThoughts(backup.thoughts)
+            db.scheduleDao().insertAllSkips(backup.skips)
 
             Result.success(backup.items.size)
         } catch (e: Exception) {

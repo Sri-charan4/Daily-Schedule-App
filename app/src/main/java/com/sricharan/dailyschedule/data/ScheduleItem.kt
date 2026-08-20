@@ -53,3 +53,18 @@ data class Completion(
     val date: String,
     val isCompleted: Boolean = true
 )
+
+/**
+ * A single occurrence of a recurring item that was let go of for one day only.
+ *
+ * Recurring items are generated from a rule rather than stored per-day, so
+ * "not today, but keep the routine" needs somewhere to live. Keyed by item +
+ * date so skipping the same day twice is a no-op.
+ */
+@Entity(tableName = "skipped_occurrences", primaryKeys = ["scheduleItemId", "date"])
+@Serializable
+data class SkippedOccurrence(
+    val scheduleItemId: Long,
+    // "yyyy-MM-dd"
+    val date: String
+)

@@ -6,9 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.sricharan.dailyschedule.data.AppDatabase
 import com.sricharan.dailyschedule.data.DayReflection
 import com.sricharan.dailyschedule.data.ScheduleItem
+import com.sricharan.dailyschedule.data.Thought
 import com.sricharan.dailyschedule.domain.Garden
 import com.sricharan.dailyschedule.domain.buildGarden
 import com.sricharan.dailyschedule.domain.dateKey
+import com.sricharan.dailyschedule.domain.key
 import com.sricharan.dailyschedule.domain.onDate
 import com.sricharan.dailyschedule.domain.someday
 import com.sricharan.dailyschedule.repository.ScheduleRepository
@@ -37,10 +39,20 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     val allItems = repository.getAllItems()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    /**
+     * Single days of a routine that were let go of. Held as "id@yyyy-MM-dd"
+     * keys so every screen can ask about a day without another query.
+     */
+    val skippedKeys: StateFlow<Set<String>> =
+        repository.getAllSkips()
+            .map { skips -> skips.map { it.key() }.toSet() }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+
     /** Items belonging to whichever day is currently in focus. */
     val itemsForSelectedDate: StateFlow<List<ScheduleItem>> =
-        combine(allItems, _selectedDate) { items, date -> items.onDate(date) }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        combine(allItems, _selectedDate, skippedKeys) { items, date, skipped ->
+            items.onDate(date, skipped)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** Undated intentions — always available, never late. */
     val somedayItems: StateFlow<List<ScheduleItem>> =
@@ -70,6 +82,12 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
             .flatMapLatest { date -> repository.getReflection(date.dateKey()) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    /** Everything written down on the day in focus, oldest first. */
+    val thoughtsForSelectedDate: StateFlow<List<Thought>> =
+        _selectedDate
+            .flatMapLatest { date -> repository.getThoughts(date.dateKey()) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     fun selectDate(date: LocalDate) {
         _selectedDate.value = date
     }
@@ -91,5 +109,21 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
 
     fun saveReflection(note: String) = viewModelScope.launch {
         repository.saveReflection(_selectedDate.value.dateKey(), note)
+    }
+
+    fun addThought(text: String) = viewModelScope.launch {
+        repository.addThought(_selectedDate.value.dateKey(), text)
+    }
+
+    fun deleteThought(thought: Thought) = viewModelScope.launch {
+        repository.deleteThought(thought)
+    }
+
+    /**
+     * Lets go of this item on the day in focus only. The routine itself stays
+     * exactly as it was, so tomorrow comes back around as usual.
+     */
+    fun skipOnSelectedDate(item: ScheduleItem) = viewModelScope.launch {
+        repository.skipOccurrence(item.id, _selectedDate.value.dateKey())
     }
 }

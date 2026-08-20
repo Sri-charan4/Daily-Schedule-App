@@ -41,6 +41,7 @@ import com.sricharan.dailyschedule.domain.occursOn
 import com.sricharan.dailyschedule.ui.components.BreathingMoment
 import com.sricharan.dailyschedule.ui.components.ItemCard
 import com.sricharan.dailyschedule.ui.components.ReflectionCard
+import com.sricharan.dailyschedule.ui.components.ThoughtsCard
 import com.sricharan.dailyschedule.ui.components.TreeGlyph
 import com.sricharan.dailyschedule.ui.components.WeekLabel
 import com.sricharan.dailyschedule.ui.components.WeekStrip
@@ -68,6 +69,8 @@ fun HomeScreen(
     val tendedDates by viewModel.tendedDates.collectAsState()
     val selectedDate by viewModel.selectedDate.collectAsState()
     val reflection by viewModel.reflectionForSelectedDate.collectAsState()
+    val thoughts by viewModel.thoughtsForSelectedDate.collectAsState()
+    val skipped by viewModel.skippedKeys.collectAsState()
 
     val timeOfDay = LocalTimeOfDay.current
     var breathing by remember { mutableStateOf(false) }
@@ -152,7 +155,7 @@ fun HomeScreen(
                     Spacer(Modifier.height(4.dp))
                     WeekStrip(
                         selectedDate = selectedDate,
-                        hasItemsOn = { date -> allItems.any { it.occursOn(date) } },
+                        hasItemsOn = { date -> allItems.any { it.occursOn(date, skipped) } },
                         tendedDates = tendedDates,
                         onSelect = viewModel::selectDate
                     )
@@ -225,6 +228,15 @@ fun HomeScreen(
                 ReflectionCard(
                     savedNote = reflection?.note,
                     onSave = viewModel::saveReflection
+                )
+            }
+
+            item {
+                Spacer(Modifier.height(4.dp))
+                ThoughtsCard(
+                    thoughts = thoughts,
+                    onAdd = viewModel::addThought,
+                    onDelete = viewModel::deleteThought
                 )
             }
 

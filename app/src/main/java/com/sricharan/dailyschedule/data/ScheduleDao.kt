@@ -81,4 +81,50 @@ interface ScheduleDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAllCompletions(completions: List<Completion>)
+
+    // --- Thoughts ---
+
+    @Query("SELECT * FROM thoughts WHERE date = :date ORDER BY writtenAt ASC")
+    fun getThoughts(date: String): Flow<List<Thought>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertThought(thought: Thought)
+
+    @Delete
+    suspend fun deleteThought(thought: Thought)
+
+    // --- Skipped occurrences of recurring items ---
+
+    @Query("SELECT * FROM skipped_occurrences")
+    fun getAllSkips(): Flow<List<SkippedOccurrence>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSkip(skip: SkippedOccurrence)
+
+    @Query("DELETE FROM skipped_occurrences WHERE scheduleItemId = :itemId AND date = :date")
+    suspend fun clearSkip(itemId: Long, date: String)
+
+    /** Deleting an item outright shouldn't leave its skips behind. */
+    @Query("DELETE FROM skipped_occurrences WHERE scheduleItemId = :itemId")
+    suspend fun clearSkipsForItem(itemId: Long)
+
+    // --- Used by backup/restore ---
+
+    @Query("SELECT * FROM thoughts")
+    suspend fun getAllThoughtsOnce(): List<Thought>
+
+    @Query("SELECT * FROM skipped_occurrences")
+    suspend fun getAllSkipsOnce(): List<SkippedOccurrence>
+
+    @Query("DELETE FROM thoughts")
+    suspend fun clearAllThoughts()
+
+    @Query("DELETE FROM skipped_occurrences")
+    suspend fun clearAllSkips()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllThoughts(thoughts: List<Thought>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllSkips(skips: List<SkippedOccurrence>)
 }
