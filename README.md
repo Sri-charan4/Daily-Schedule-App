@@ -1,4 +1,4 @@
-# Daily Schedule
+# Your Days
 
 Fully offline daily planner / routine tracker. No sign-up, no network permission,
 no cloud dependency. Backup/restore is done via a plain JSON file the user
