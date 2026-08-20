@@ -5,6 +5,7 @@ import com.sricharan.dailyschedule.data.SkippedOccurrence
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -87,3 +88,51 @@ fun weekOf(date: LocalDate): List<LocalDate> {
     val monday = date.minusDays((date.dayOfWeek.value - 1).toLong())
     return (0..6).map { monday.plusDays(it.toLong()) }
 }
+
+/**
+ * Where a reminder lands when the item itself has no particular time. Late
+ * enough not to wake anyone, early enough to still be worth knowing.
+ */
+val DEFAULT_REMINDER_TIME: LocalTime = LocalTime.of(9, 0)
+
+fun LocalDateTime.toEpochMillis(): Long =
+    atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+/**
+ * The next moment this item should nudge, strictly after [after], or null if
+ * it never will again.
+ *
+ * This is the only place reminder timing is decided. The initial scheduling,
+ * the re-arming that happens once an alarm fires, and the rebuild after a
+ * reboot all ask this same question, so they cannot drift apart.
+ *
+ * Days let go of individually are stepped over rather than fired, and a
+ * one-off whose moment has passed returns null instead of nagging about
+ * something already behind you.
+ */
+fun ScheduleItem.nextReminderAfter(
+    after: LocalDateTime,
+    skipped: Set<String> = emptySet()
+): LocalDateTime? {
+    if (!reminderEnabled) return null
+    val time = timeOfDay() ?: DEFAULT_REMINDER_TIME
+
+    if (!isRecurring) {
+        val date = scheduledDate() ?: return null
+        return date.atTime(time).takeIf { it.isAfter(after) }
+    }
+
+    // Walk forward far enough to clear any weekly pattern plus a long run of
+    // skipped days, stopping at the first day that actually holds this item.
+    var date = after.toLocalDate()
+    repeat(SEARCH_HORIZON_DAYS) {
+        if (occursOn(date, skipped)) {
+            val moment = date.atTime(time)
+            if (moment.isAfter(after)) return moment
+        }
+        date = date.plusDays(1)
+    }
+    return null
+}
+
+private const val SEARCH_HORIZON_DAYS = 400

@@ -1,46 +1,74 @@
 package com.sricharan.dailyschedule.notifications
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
-import androidx.core.app.NotificationCompat
-import com.sricharan.dailyschedule.MainActivity
-import android.app.PendingIntent
+import android.util.Log
+import com.sricharan.dailyschedule.data.AppDatabase
+import com.sricharan.dailyschedule.domain.dateKey
+import com.sricharan.dailyschedule.domain.key
+import com.sricharan.dailyschedule.domain.skipKey
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import java.time.LocalDate
 
+/**
+ * Where an alarm lands. Two jobs, in this order of importance:
+ *
+ *  1. Say the thing.
+ *  2. Book the next one — a routine keeps going only because each firing
+ *     arranges its successor.
+ *
+ * Step 2 happens even when step 1 is deliberately skipped, so a day you'd
+ * already dealt with can't quietly end the whole routine.
+ */
 class ReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        val title = intent.getStringExtra("title") ?: "Scheduled item"
-        val itemId = intent.getLongExtra("itemId", -1L)
+        val itemId = intent.getLongExtra(ReminderScheduler.EXTRA_ITEM_ID, -1L)
+        if (itemId < 0) return
 
-        val channelId = "schedule_reminders"
-        val notificationManager =
-            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        // Database work can't happen on the main thread, and a receiver is dead
+        // the moment onReceive returns — goAsync() buys us that time.
+        val pending = goAsync()
+        val appContext = context.applicationContext
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId, "Reminders", NotificationManager.IMPORTANCE_HIGH
-            )
-            notificationManager.createNotificationChannel(channel)
+        scope.launch {
+            try {
+                val dao = AppDatabase.getInstance(appContext).scheduleDao()
+                val item = dao.getItemById(itemId)
+
+                if (item == null || !item.reminderEnabled) {
+                    ReminderScheduler.cancel(appContext, itemId)
+                    return@launch
+                }
+
+                val today = LocalDate.now()
+                val skipped = dao.getAllSkipsOnce().map { it.key() }.toSet()
+
+                val alreadyTended =
+                    dao.getCompletionForDate(itemId, today.dateKey())?.isCompleted == true
+                val letGoToday = skipKey(itemId, today) in skipped
+
+                // Nothing to say if it's already done, or if this particular day
+                // was set down on purpose.
+                if (!alreadyTended && !letGoToday) {
+                    Reminders.notify(appContext, item)
+                }
+
+                ReminderScheduler.scheduleNext(appContext, item, skipped)
+            } catch (e: Exception) {
+                Log.e(TAG, "Reminder for item $itemId failed", e)
+            } finally {
+                pending.finish()
+            }
         }
+    }
 
-        val openAppIntent = Intent(context, MainActivity::class.java)
-        val contentPendingIntent = PendingIntent.getActivity(
-            context, itemId.toInt(), openAppIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notification = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(android.R.drawable.ic_popup_reminder)
-            .setContentTitle("Reminder")
-            .setContentText(title)
-            .setContentIntent(contentPendingIntent)
-            .setAutoCancel(true)
-            .build()
-
-        notificationManager.notify(itemId.toInt(), notification)
+    private companion object {
+        const val TAG = "ReminderReceiver"
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }
 }

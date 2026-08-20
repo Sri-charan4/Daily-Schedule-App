@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
 import com.sricharan.dailyschedule.data.AppDatabase
+import com.sricharan.dailyschedule.notifications.ReminderSync
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -89,6 +90,10 @@ class BackupManager(private val context: Context) {
             db.scheduleDao().insertAllReflections(backup.reflections)
             db.scheduleDao().insertAllThoughts(backup.thoughts)
             db.scheduleDao().insertAllSkips(backup.skips)
+
+            // Every item just changed underneath the alarms that were pending,
+            // so rebuild them against what was actually restored.
+            ReminderSync.syncAll(context)
 
             Result.success(backup.items.size)
         } catch (e: Exception) {

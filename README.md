@@ -10,10 +10,10 @@ controls (share to WhatsApp, Drive, save locally, whatever).
 2. **File > Open** and select the `DailySchedule` folder.
 3. Let Gradle sync — it'll pull in the wrapper automatically the first time
    you open it (if it doesn't, run `File > Sync Project with Gradle Files`).
-4. You'll need a launcher icon at `app/src/main/res/mipmap-*/ic_launcher.png` —
-   Android Studio's **Image Asset** wizard (right-click `res` > New > Image Asset)
-   will generate all densities for you from a single image.
-5. Run on an emulator or physical device (minSdk 26 / Android 8.0+).
+4. Run on an emulator or physical device (minSdk 26 / Android 8.0+).
+
+The launcher icon is an adaptive vector (`drawable/ic_launcher_foreground.xml`
+plus `mipmap-anydpi-v26/`), so there are no per-density rasters to regenerate.
 
 ## Architecture
 
@@ -44,13 +44,34 @@ Google Drive, or manually copied with a file manager — anything that can hand
 Android a file `Uri` will work, since it goes through the system picker
 rather than a hardcoded folder.
 
-## What's stubbed / left for you to extend
+## Reminders
 
-- `BootReceiver.kt` — Android clears `AlarmManager` alarms on reboot; this is
-  where you'd re-read all reminder-enabled items and re-schedule them
-- App icon (`ic_launcher`) — generate via Android Studio's Image Asset tool
-- The Add/Edit screen currently only supports creating new items end-to-end;
-  wire up loading an existing item by ID (via `viewModel.allItems`) if you
-  want in-place editing rather than delete + recreate
-- Stats/streaks screen — `Completion` table is already there to support it,
-  just needs a screen and some date-range queries
+`reminderEnabled` on an item means "nudge me about this". The chain:
+
+- `domain/Occurrences.kt` — `nextReminderAfter()` is the single source of truth
+  for *when*. One-off items fire at their own date/time; routines walk forward
+  to their next chosen weekday; days that were let go of individually are
+  stepped over; an item with no day at all returns null. No time set means
+  9:00am (`DEFAULT_REMINDER_TIME`).
+- `ReminderScheduler` — books exactly one alarm per item: the next one.
+- `ReminderReceiver` — posts the notification, then **books the following
+  alarm**. This is what keeps a routine going; there is no repeating alarm.
+- `ReminderSync` — rebuilds every alarm from the database. Called on app start,
+  after a restore, and by `BootReceiver`.
+- `BootReceiver` — rebuilds after reboot, app update, and clock/timezone
+  changes, all of which invalidate pending alarms.
+
+Two permissions gate this and both are checked rather than assumed:
+`POST_NOTIFICATIONS` (Android 13+, requested when the nudge toggle is switched
+on) and exact alarms (Android 12+, granted in system settings). Without the
+second, reminders fall back to inexact delivery rather than failing. Settings
+shows the state of both.
+
+Timing is covered by unit tests in `app/src/test/.../NextReminderTest.kt`:
+`./gradlew testDebugUnitTest`.
+
+## What's left to extend
+
+- No stats screen beyond the Garden.
+- Notifications have no "mark as tended" action button — tapping one just opens
+  the app.

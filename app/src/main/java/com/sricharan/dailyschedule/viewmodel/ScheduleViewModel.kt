@@ -13,6 +13,8 @@ import com.sricharan.dailyschedule.domain.dateKey
 import com.sricharan.dailyschedule.domain.key
 import com.sricharan.dailyschedule.domain.onDate
 import com.sricharan.dailyschedule.domain.someday
+import com.sricharan.dailyschedule.notifications.ReminderScheduler
+import com.sricharan.dailyschedule.notifications.ReminderSync
 import com.sricharan.dailyschedule.repository.ScheduleRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -93,13 +95,17 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun saveItem(item: ScheduleItem) = viewModelScope.launch {
-        repository.saveItem(item)
+        // The new id matters for a freshly inserted item — its alarm is keyed
+        // by it, and 0 would book the alarm against the wrong row.
+        val id = repository.saveItem(item)
+        ReminderSync.syncOne(getApplication(), id)
     }
 
     suspend fun loadItem(id: Long): ScheduleItem? = repository.getItemById(id)
 
     fun deleteItem(item: ScheduleItem) = viewModelScope.launch {
         repository.deleteItem(item)
+        ReminderScheduler.cancel(getApplication(), item.id)
     }
 
     /** Tend (or un-tend) an item on the day currently in focus. */
@@ -125,5 +131,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
      */
     fun skipOnSelectedDate(item: ScheduleItem) = viewModelScope.launch {
         repository.skipOccurrence(item.id, _selectedDate.value.dateKey())
+        // The skipped day may have been the one the pending alarm was set for.
+        ReminderSync.syncOne(getApplication(), item.id)
     }
 }

@@ -1,5 +1,9 @@
 package com.sricharan.dailyschedule.ui.screens
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,6 +18,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -39,16 +45,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.sricharan.dailyschedule.data.ScheduleItem
 import com.sricharan.dailyschedule.domain.DAY_CODES
+import com.sricharan.dailyschedule.domain.DEFAULT_REMINDER_TIME
 import com.sricharan.dailyschedule.domain.recurrenceDaySet
 import com.sricharan.dailyschedule.domain.scheduledDate
 import com.sricharan.dailyschedule.domain.timeOfDay
 import com.sricharan.dailyschedule.ui.components.DateChoiceDialog
 import com.sricharan.dailyschedule.ui.components.LetItGoDialog
+import com.sricharan.dailyschedule.notifications.Reminders
 import com.sricharan.dailyschedule.ui.components.PickerRow
 import com.sricharan.dailyschedule.ui.components.TimeChoiceDialog
+import com.sricharan.dailyschedule.ui.components.rememberReminderPermissions
 import com.sricharan.dailyschedule.ui.components.soften
 import com.sricharan.dailyschedule.viewmodel.ScheduleViewModel
 import kotlinx.coroutines.launch
@@ -66,7 +76,16 @@ fun AddEditScreen(
     onDone: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val selectedDate by viewModel.selectedDate.collectAsState()
+    val permissions = rememberReminderPermissions()
+
+    // Android 13+ shows nothing at all until this is granted, so it's asked for
+    // at the moment the user says they want to be nudged — not on first launch,
+    // where it would arrive with no explanation.
+    val notificationRequest = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* Either way the note below reflects the outcome. */ }
 
     var loaded by remember { mutableStateOf(existingItemId == null) }
     var existing by remember { mutableStateOf<ScheduleItem?>(null) }
@@ -228,8 +247,33 @@ fun AddEditScreen(
                 title = "A gentle nudge",
                 subtitle = "A quiet notification. Never a repeated alarm.",
                 checked = reminderEnabled,
-                onCheckedChange = { reminderEnabled = it }
+                onCheckedChange = { wanted ->
+                    reminderEnabled = wanted
+                    if (wanted &&
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        !permissions.canNotify
+                    ) {
+                        notificationRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
             )
+
+            if (reminderEnabled) {
+                ReminderNote(
+                    arrivesAt = (chosenTime ?: DEFAULT_REMINDER_TIME).soften(),
+                    usingDefaultTime = chosenTime == null,
+                    hasSomewhereToLand = isRecurring || hasDate,
+                    canNotify = permissions.canNotify,
+                    canBeExact = permissions.canBeExact,
+                    onFixNotifications = {
+                        context.startActivity(Reminders.notificationSettingsIntent(context))
+                    },
+                    onFixExactAlarms = {
+                        Reminders.exactAlarmSettingsIntent(context)
+                            ?.let { context.startActivity(it) }
+                    }
+                )
+            }
 
             Spacer(Modifier.height(4.dp))
 
@@ -374,6 +418,83 @@ private fun DayChips(selectedDays: Set<String>, onToggle: (String, Boolean) -> U
                 ),
                 modifier = Modifier.weight(1f)
             )
+        }
+    }
+}
+
+/**
+ * Says exactly what will happen, including when it won't.
+ *
+ * A reminder that quietly fails is the worst outcome here, so anything the
+ * system is currently blocking is stated plainly with the way to fix it,
+ * rather than left for the user to discover by not being reminded.
+ */
+@Composable
+private fun ReminderNote(
+    arrivesAt: String,
+    usingDefaultTime: Boolean,
+    hasSomewhereToLand: Boolean,
+    canNotify: Boolean,
+    canBeExact: Boolean,
+    onFixNotifications: () -> Unit,
+    onFixExactAlarms: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            if (!hasSomewhereToLand) {
+                Text(
+                    text = "This hasn't got a day yet, so there's nothing to count " +
+                        "down to. Give it a day, or let it repeat, and the nudge " +
+                        "will find it.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Text(
+                    text = if (usingDefaultTime) {
+                        "No time set, so this will arrive at $arrivesAt."
+                    } else {
+                        "This will arrive at $arrivesAt."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (!canNotify) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "Notifications are switched off for this app, so nothing " +
+                        "can reach you yet.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                TextButton(
+                    onClick = onFixNotifications,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                ) { Text("Turn them on") }
+            }
+
+            if (!canBeExact) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "Without permission for exact alarms this will still " +
+                        "arrive, but the system may hold it back a while.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                TextButton(
+                    onClick = onFixExactAlarms,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                ) { Text("Allow exact timing") }
+            }
         }
     }
 }
