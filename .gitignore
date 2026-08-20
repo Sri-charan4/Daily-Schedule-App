@@ -13,3 +13,8 @@ local.properties
 *.dex
 *.class
 .kotlin/
+
+# Signing key and its passwords: never commit these.
+keystore.properties
+*.jks
+*.keystore

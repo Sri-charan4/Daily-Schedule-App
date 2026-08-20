@@ -1,9 +1,28 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
     id("org.jetbrains.kotlin.plugin.serialization")
 }
+
+/**
+ * Signing details are deliberately kept out of the repository. Create
+ * keystore.properties next to this project (see keystore.properties.example)
+ * and point it at your .jks file.
+ *
+ * Without that file the project still builds -- release output is just left
+ * unsigned, so cloning the repo doesn't require anyone else's key.
+ */
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        FileInputStream(keystorePropertiesFile).use { load(it) }
+    }
+}
+val hasSigningKey = keystorePropertiesFile.exists()
 
 android {
     namespace = "com.sricharan.dailyschedule"
@@ -17,9 +36,24 @@ android {
         versionName = "1.0"
     }
 
+    signingConfigs {
+        if (hasSigningKey) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            // Left off deliberately: shrinking is one more thing that can break
+            // at runtime only, and this build goes straight to real people
+            // rather than through a test lab.
             isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 
@@ -58,9 +92,6 @@ dependencies {
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
-
-    // WorkManager (for scheduled reminder checks)
-    implementation("androidx.work:work-runtime-ktx:2.9.0")
 
     // JSON serialization for backup/restore
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
