@@ -16,6 +16,12 @@ import com.sricharan.dailyschedule.backup.BackupManager
 import com.sricharan.dailyschedule.notifications.Reminders
 import com.sricharan.dailyschedule.ui.components.rememberReminderPermissions
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
+import com.sricharan.dailyschedule.domain.RING_DURATION_MINUTES
+import com.sricharan.dailyschedule.domain.MAX_UNANSWERED_RINGS
+import com.sricharan.dailyschedule.data.AlarmPreferences
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.material3.Slider
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -25,6 +31,8 @@ fun SettingsScreen(onBack: () -> Unit) {
     val backupManager = remember { BackupManager(context) }
     var isWorking by remember { mutableStateOf(false) }
     val permissions = rememberReminderPermissions()
+    val alarmPrefs = remember { AlarmPreferences(context) }
+    var snoozeMinutes by remember { mutableIntStateOf(alarmPrefs.snoozeMinutes) }
 
     val notificationRequest = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -149,6 +157,39 @@ fun SettingsScreen(onBack: () -> Unit) {
                     ).show()
                 }
             ) { Text("Send a test reminder") }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+            Text(
+                "Alarms",
+                style = MaterialTheme.typography.titleMedium
+            )
+            Text(
+                "An alarm rings for $RING_DURATION_MINUTES minutes. If you don't answer it, " +
+                    "it waits and tries again — up to $MAX_UNANSWERED_RINGS times in all, " +
+                    "and then it lets the day go rather than keep at you.",
+                style = MaterialTheme.typography.bodyMedium
+            )
+
+            Text(
+                text = if (snoozeMinutes == 1) {
+                    "Snooze for 1 minute"
+                } else {
+                    "Snooze for $snoozeMinutes minutes"
+                },
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Slider(
+                value = snoozeMinutes.toFloat(),
+                onValueChange = { snoozeMinutes = it.roundToInt() },
+                // Committed on release rather than on every drag, so the
+                // setting is written once instead of two dozen times.
+                onValueChangeFinished = { alarmPrefs.snoozeMinutes = snoozeMinutes },
+                valueRange = AlarmPreferences.SNOOZE_RANGE.first.toFloat()..
+                    AlarmPreferences.SNOOZE_RANGE.last.toFloat(),
+                steps = AlarmPreferences.SNOOZE_RANGE.count() - 2,
+                modifier = Modifier.fillMaxWidth()
+            )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 

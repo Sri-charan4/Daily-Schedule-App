@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.sricharan.dailyschedule.data.AlarmPreferences
 import com.sricharan.dailyschedule.data.ScheduleItem
 import com.sricharan.dailyschedule.domain.ReminderStyle
 import com.sricharan.dailyschedule.domain.nextReminderAfter
@@ -38,6 +39,14 @@ object ReminderScheduler {
         skipped: Set<String>,
         from: LocalDateTime = LocalDateTime.now()
     ): LocalDateTime? {
+        // A snooze isn't derivable from the schedule, so a blind rebuild would
+        // wipe it and replace it with tomorrow's alarm. Leave it be.
+        val snoozedUntil = AlarmPreferences(context).snoozeUntil(item.id)
+        if (snoozedUntil > System.currentTimeMillis()) {
+            Log.i(TAG, "Item ${item.id} is snoozed; leaving its alarm alone")
+            return null
+        }
+
         cancel(context, item.id)
 
         val next = item.nextReminderAfter(from, skipped) ?: return null
@@ -120,7 +129,7 @@ object ReminderScheduler {
     fun scheduleSnooze(
         context: Context,
         itemId: Long,
-        minutes: Long = Alarms.SNOOZE_MINUTES
+        minutes: Int = AlarmPreferences(context).snoozeMinutes
     ) {
         val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return
         val triggerAt = System.currentTimeMillis() + minutes * 60_000L
@@ -129,6 +138,9 @@ object ReminderScheduler {
                 AlarmManager.AlarmClockInfo(triggerAt, showAlarmIntent(context)),
                 pendingIntent(context, itemId)
             )
+            // Recorded so a resync can tell "no alarm booked" apart from
+            // "deliberately quiet until 7:10".
+            AlarmPreferences(context).setSnoozeUntil(itemId, triggerAt)
         }.onFailure { Log.w(TAG, "Could not snooze item $itemId", it) }
     }
 

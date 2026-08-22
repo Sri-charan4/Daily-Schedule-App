@@ -31,9 +31,6 @@ object Alarms {
 
     const val CHANNEL_ID = "schedule_alarms"
 
-    /** Ten minutes, the same as nearly every clock app, so it needs no explaining. */
-    const val SNOOZE_MINUTES = 10L
-
     fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(NotificationManager::class.java) ?: return

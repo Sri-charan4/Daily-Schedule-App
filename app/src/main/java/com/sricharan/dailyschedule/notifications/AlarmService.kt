@@ -14,12 +14,19 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Log
+import com.sricharan.dailyschedule.data.AlarmPreferences
 import com.sricharan.dailyschedule.data.AppDatabase
+import com.sricharan.dailyschedule.data.SkippedOccurrence
+import com.sricharan.dailyschedule.domain.RING_DURATION_MINUTES
+import com.sricharan.dailyschedule.domain.UnansweredAlarm
+import com.sricharan.dailyschedule.domain.dateKey
+import com.sricharan.dailyschedule.domain.decideUnansweredAlarm
 import com.sricharan.dailyschedule.domain.key
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 /**
@@ -109,7 +116,7 @@ class AlarmService : Service() {
             wakeLock = power?.newWakeLock(
                 PowerManager.PARTIAL_WAKE_LOCK,
                 "YourDays:alarm"
-            )?.apply { acquire(RING_TIMEOUT_MS) }
+            )?.apply { acquire(RING_DURATION_MINUTES * 60_000L + WAKE_LOCK_SLACK_MS) }
         }
 
         runCatching {
@@ -142,10 +149,12 @@ class AlarmService : Service() {
             )
         }
 
-        // An alarm nobody answers shouldn't ring until the battery dies.
+        // Two minutes of ringing, then it decides for itself whether to try
+        // again later or leave the day alone.
         scope.launch {
-            kotlinx.coroutines.delay(RING_TIMEOUT_MS)
-            if (ringingItemId >= 0) answer(ringingItemId, snooze = false)
+            kotlinx.coroutines.delay(RING_DURATION_MINUTES * 60_000L)
+            val id = ringingItemId
+            if (id >= 0) wentUnanswered(id)
         }
     }
 
@@ -167,8 +176,12 @@ class AlarmService : Service() {
                 Alarms.clear(context, id)
 
                 if (snooze) {
+                    // A snooze the user asked for isn't evidence they're
+                    // absent, so the unanswered run starts over.
+                    AlarmPreferences(context).clear(id)
                     ReminderScheduler.scheduleSnooze(context, id)
                 } else {
+                    AlarmPreferences(context).clear(id)
                     val dao = AppDatabase.getInstance(context).scheduleDao()
                     val item = dao.getItemById(id)
                     if (item != null) {
@@ -188,6 +201,70 @@ class AlarmService : Service() {
                 stopSelf()
             }
         }
+    }
+
+    /**
+     * Nobody picked this up within the ring window.
+     *
+     * Counting happens here rather than in the alarm itself because each ring
+     * is a separate service instance — the count is the only thread connecting
+     * them, and it has to survive the process dying in between.
+     */
+    private fun wentUnanswered(itemId: Long) {
+        stopSound()
+
+        scope.launch {
+            try {
+                val context = applicationContext
+                val prefs = AlarmPreferences(context)
+                val rings = prefs.recordUnansweredRing(itemId)
+
+                Alarms.clear(context, itemId)
+
+                when (decideUnansweredAlarm(rings)) {
+                    UnansweredAlarm.SNOOZE -> {
+                        Log.i(TAG, "Alarm $itemId unanswered ($rings), snoozing")
+                        ReminderScheduler.scheduleSnooze(context, itemId)
+                    }
+                    UnansweredAlarm.GIVE_UP -> {
+                        Log.i(TAG, "Alarm $itemId unanswered $rings times, letting the day go")
+                        giveUpOnToday(itemId)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Could not settle unanswered alarm $itemId", e)
+            } finally {
+                ringingItemId = -1L
+                stopForegroundCompat()
+                stopSelf()
+            }
+        }
+    }
+
+    /**
+     * Sets today's occurrence down and moves on to the next one.
+     *
+     * Recorded as an ordinary skip — the same thing "let it go for today"
+     * writes — so the routine survives intact, the day simply isn't counted
+     * against you, and the Garden treats it exactly as it treats a day you
+     * chose to let go of.
+     */
+    private suspend fun giveUpOnToday(itemId: Long) {
+        val context = applicationContext
+        val dao = AppDatabase.getInstance(context).scheduleDao()
+        val prefs = AlarmPreferences(context)
+
+        val today = LocalDate.now()
+        runCatching { dao.insertSkip(SkippedOccurrence(itemId, today.dateKey())) }
+        prefs.clear(itemId)
+
+        val item = dao.getItemById(itemId) ?: return
+        ReminderScheduler.scheduleNext(
+            context,
+            item,
+            dao.getAllSkipsOnce().map { it.key() }.toSet(),
+            LocalDateTime.now()
+        )
     }
 
     private fun stopSound() {
@@ -219,8 +296,8 @@ class AlarmService : Service() {
         const val ACTION_SNOOZE = "com.sricharan.dailyschedule.action.ALARM_SNOOZE"
         const val EXTRA_ITEM_ID = "itemId"
 
-        /** Fifteen minutes of ringing is plenty; past that nobody is coming. */
-        private const val RING_TIMEOUT_MS = 15 * 60 * 1000L
+        /** A little past the ring itself, so the hand-off to a snooze isn't cut short. */
+        private const val WAKE_LOCK_SLACK_MS = 30_000L
         private const val TAG = "AlarmService"
 
         fun start(context: Context, itemId: Long) {

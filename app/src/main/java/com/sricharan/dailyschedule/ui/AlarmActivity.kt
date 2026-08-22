@@ -31,10 +31,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.sricharan.dailyschedule.data.AlarmPreferences
 import com.sricharan.dailyschedule.data.AppDatabase
 import com.sricharan.dailyschedule.data.ScheduleItem
 import com.sricharan.dailyschedule.notifications.AlarmService
-import com.sricharan.dailyschedule.notifications.Alarms
 import com.sricharan.dailyschedule.ui.theme.DailyScheduleTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -67,6 +67,9 @@ class AlarmActivity : ComponentActivity() {
         setContent {
             DailyScheduleTheme {
                 var item by remember { mutableStateOf<ScheduleItem?>(null) }
+                val snoozeMinutes = remember {
+                    AlarmPreferences(applicationContext).snoozeMinutes
+                }
 
                 LaunchedEffect(itemId) {
                     item = withContext(Dispatchers.IO) {
@@ -85,6 +88,7 @@ class AlarmActivity : ComponentActivity() {
                     RingingAlarm(
                         title = item?.title ?: "Time's up",
                         notes = item?.notes.orEmpty(),
+                        snoozeMinutes = snoozeMinutes,
                         onSnooze = {
                             send(itemId, AlarmService.ACTION_SNOOZE)
                             finish()
@@ -148,6 +152,7 @@ class AlarmActivity : ComponentActivity() {
 private fun RingingAlarm(
     title: String,
     notes: String,
+    snoozeMinutes: Int,
     onSnooze: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -189,12 +194,16 @@ private fun RingingAlarm(
 
         // Dismiss is the larger, primary one: snoozing is the choice you make
         // half-asleep, and it shouldn't be the easiest thing to hit by accident.
+        //
+        // The wording stays about the alarm rather than about the person --
+        // this rings for appointments and medication as much as for waking up,
+        // and "I'm up" only makes sense for one of those.
         Button(
             onClick = onDismiss,
             modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.medium
         ) {
-            Text("I'm up", modifier = Modifier.padding(vertical = 8.dp))
+            Text("Got it", modifier = Modifier.padding(vertical = 8.dp))
         }
 
         Spacer(Modifier.height(12.dp))
@@ -208,7 +217,7 @@ private fun RingingAlarm(
             )
         ) {
             Text(
-                "Another ${Alarms.SNOOZE_MINUTES} minutes",
+                if (snoozeMinutes == 1) "Another minute" else "Another $snoozeMinutes minutes",
                 modifier = Modifier.padding(vertical = 8.dp)
             )
         }
