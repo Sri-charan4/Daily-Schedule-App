@@ -22,6 +22,8 @@ import com.sricharan.dailyschedule.domain.MAX_UNANSWERED_RINGS
 import com.sricharan.dailyschedule.data.AlarmPreferences
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.material3.Slider
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,6 +77,9 @@ fun SettingsScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                // Scroll before padding, so the scrollbar tracks the whole
+                // screen rather than an inset box.
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
