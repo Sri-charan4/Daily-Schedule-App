@@ -33,7 +33,18 @@ data class ScheduleItem(
     // Time-of-day for recurring items, stored as "HH:mm" (24h). Empty if none.
     val recurrenceTime: String = "",
 
+    /**
+     * Whether anything at all arrives. Kept as the original boolean rather
+     * than folded into an enum column so that every backup ever written by
+     * this app still restores with its reminders intact.
+     */
     val reminderEnabled: Boolean = false,
+    /**
+     * Whether that something rings rather than whispers. Only meaningful when
+     * [reminderEnabled] is true — read the pair through
+     * `ScheduleItem.reminderStyle` instead of touching either directly.
+     */
+    val alarmEnabled: Boolean = false,
 
     val isCompleted: Boolean = false,
     val createdAt: Long = System.currentTimeMillis()

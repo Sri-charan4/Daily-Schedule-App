@@ -36,6 +36,7 @@ object ReminderSync {
         val now = LocalDateTime.now()
 
         Reminders.ensureChannel(context)
+        Alarms.ensureChannel(context)
         dao.getAllItemsOnce().forEach { item ->
             if (item.reminderEnabled) {
                 if (deliverMissed) deliverIfMissed(context, dao, item, skipped, now)
@@ -85,6 +86,11 @@ object ReminderSync {
         if (alreadyTended || skipKey(item.id, date) in skipped) return
 
         Log.i(TAG, "Delivering missed reminder for item ${item.id}, due $missed")
+
+        // A missed alarm arrives as a notification rather than ringing. The
+        // moment it was for has gone; starting a full alarm hours late would
+        // be alarming in the wrong sense, and there is nothing left to be
+        // woken up for.
         Reminders.notify(context, item)
     }
 

@@ -4,7 +4,21 @@
     <!-- No INTERNET permission on purpose — this app never touches the network -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!--
+      An alarm that rings late is broken, not merely imprecise, so this one is
+      worth the Play Console declaration that comes with it. Only levelled at
+      items the user explicitly set to ring; a "gentle nudge" still schedules
+      through SCHEDULE_EXACT_ALARM and degrades gracefully without it.
+    -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Showing the alarm screen over the lock screen. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Keeps the process alive while an alarm is actually ringing. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <application
         android:allowBackup="true"
@@ -22,6 +36,27 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          Its own task, and excluded from recents: a ringing alarm is an
+          interruption to be answered and forgotten, not something to find
+          again by swiping through recent apps.
+        -->
+        <activity
+            android:name=".ui.AlarmActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity=".alarm"
+            android:excludeFromRecents="true"
+            android:showOnLockScreen="true"
+            android:turnScreenOn="true"
+            android:showWhenLocked="true"
+            android:theme="@style/Theme.DailySchedule" />
+
+        <service
+            android:name=".notifications.AlarmService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <receiver
             android:name=".notifications.ReminderReceiver"

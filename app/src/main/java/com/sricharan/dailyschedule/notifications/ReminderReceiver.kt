@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.sricharan.dailyschedule.data.AppDatabase
+import com.sricharan.dailyschedule.domain.ReminderStyle
 import com.sricharan.dailyschedule.domain.dateKey
+import com.sricharan.dailyschedule.domain.reminderStyle
 import com.sricharan.dailyschedule.domain.key
 import com.sricharan.dailyschedule.domain.skipKey
 import kotlinx.coroutines.CoroutineScope
@@ -72,10 +74,19 @@ class ReminderReceiver : BroadcastReceiver() {
                 // Nothing to say if it's already done, or if this particular day
                 // was set down on purpose.
                 if (!alreadyTended && !letGoToday) {
-                    Reminders.notify(appContext, item)
+                    when (item.reminderStyle) {
+                        ReminderStyle.ALARM -> AlarmService.start(appContext, itemId)
+                        ReminderStyle.NUDGE -> Reminders.notify(appContext, item)
+                        ReminderStyle.NONE -> Unit
+                    }
                 }
 
-                ReminderScheduler.scheduleNext(appContext, item, skipped)
+                // An alarm books its own successor once it has been answered,
+                // since a snooze has to be able to outlive this moment without
+                // the next day's alarm being scheduled on top of it.
+                if (item.reminderStyle != ReminderStyle.ALARM || alreadyTended || letGoToday) {
+                    ReminderScheduler.scheduleNext(appContext, item, skipped)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Reminder for item $itemId failed", e)
             } finally {

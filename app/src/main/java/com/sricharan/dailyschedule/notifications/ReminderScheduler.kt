@@ -6,8 +6,11 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.sricharan.dailyschedule.data.ScheduleItem
+import com.sricharan.dailyschedule.domain.ReminderStyle
 import com.sricharan.dailyschedule.domain.nextReminderAfter
+import com.sricharan.dailyschedule.domain.reminderStyle
 import com.sricharan.dailyschedule.domain.toEpochMillis
+import android.app.PendingIntent as AndroidPendingIntent
 import java.time.LocalDateTime
 
 /**
@@ -42,7 +45,16 @@ object ReminderScheduler {
         val triggerAt = next.toEpochMillis()
 
         try {
-            if (Reminders.canScheduleExactAlarms(context)) {
+            if (item.reminderStyle == ReminderStyle.ALARM) {
+                // The strongest thing AlarmManager offers: always exact, and
+                // exempt from Doze and battery saver rather than merely allowed
+                // through them. It also puts the alarm icon in the status bar,
+                // which is the honest signal that something is set to ring.
+                alarmManager.setAlarmClock(
+                    AlarmManager.AlarmClockInfo(triggerAt, showAlarmIntent(context)),
+                    pendingIntent(context, item.id)
+                )
+            } else if (Reminders.canScheduleExactAlarms(context)) {
                 alarmManager.setExactAndAllowWhileIdle(
                     AlarmManager.RTC_WAKEUP,
                     triggerAt,
@@ -97,6 +109,29 @@ object ReminderScheduler {
         }.onFailure { Log.w(TAG, "Could not book the heartbeat", it) }
     }
 
+    /**
+     * Re-rings one item a short while from now.
+     *
+     * Deliberately not routed through [nextReminderAfter]: a snooze is a fixed
+     * offset from the moment it was asked for, not a recalculation of the
+     * item's schedule. The next real occurrence gets booked when the alarm is
+     * finally dismissed.
+     */
+    fun scheduleSnooze(
+        context: Context,
+        itemId: Long,
+        minutes: Long = Alarms.SNOOZE_MINUTES
+    ) {
+        val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return
+        val triggerAt = System.currentTimeMillis() + minutes * 60_000L
+        runCatching {
+            alarmManager.setAlarmClock(
+                AlarmManager.AlarmClockInfo(triggerAt, showAlarmIntent(context)),
+                pendingIntent(context, itemId)
+            )
+        }.onFailure { Log.w(TAG, "Could not snooze item $itemId", it) }
+    }
+
     fun cancel(context: Context, itemId: Long) {
         val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return
         alarmManager.cancel(pendingIntent(context, itemId))
@@ -128,6 +163,21 @@ object ReminderScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+    /**
+     * Where the system's own "next alarm" chip goes when tapped. Opening the
+     * app is the truthful answer — that's where the alarm can be changed.
+     */
+    private fun showAlarmIntent(context: Context): AndroidPendingIntent =
+        AndroidPendingIntent.getActivity(
+            context,
+            SHOW_ALARM_REQUEST_CODE,
+            Intent(context, com.sricharan.dailyschedule.MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            },
+            AndroidPendingIntent.FLAG_UPDATE_CURRENT or AndroidPendingIntent.FLAG_IMMUTABLE
+        )
+
+    private const val SHOW_ALARM_REQUEST_CODE = Int.MIN_VALUE + 1
     private const val HEARTBEAT_REQUEST_CODE = Int.MIN_VALUE
     private const val TAG = "ReminderScheduler"
 }

@@ -8,6 +8,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
+import com.sricharan.dailyschedule.notifications.Alarms
 import com.sricharan.dailyschedule.notifications.ReminderSync
 import com.sricharan.dailyschedule.notifications.Reminders
 import com.sricharan.dailyschedule.ui.AppNavigation
@@ -20,6 +21,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         Reminders.ensureChannel(this)
+        Alarms.ensureChannel(this)
 
         // A safety net rather than the main mechanism. Alarms are normally kept
         // current as items are edited and rebuilt by BootReceiver, but a

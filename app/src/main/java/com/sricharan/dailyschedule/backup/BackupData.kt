@@ -13,10 +13,14 @@ import kotlinx.serialization.Serializable
  *
  * v1 backups have no reflections and v2 none of the written thoughts or
  * skipped days; the defaults keep both restorable.
+ *
+ * v3 backups predate alarms. Their items carry reminderEnabled but no
+ * alarmEnabled, which defaults to false on restore — so a nudge comes back as
+ * a nudge, and nothing restored from an old file starts ringing unasked.
  */
 @Serializable
 data class BackupData(
-    val backupVersion: Int = 3,
+    val backupVersion: Int = 4,
     val exportedAt: Long = System.currentTimeMillis(),
     val items: List<ScheduleItem>,
     val completions: List<Completion>,

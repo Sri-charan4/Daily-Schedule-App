@@ -58,6 +58,8 @@ import com.sricharan.dailyschedule.ui.components.LetItGoDialog
 import com.sricharan.dailyschedule.notifications.Reminders
 import com.sricharan.dailyschedule.ui.components.PickerRow
 import com.sricharan.dailyschedule.ui.components.TimeChoiceDialog
+import com.sricharan.dailyschedule.domain.ReminderStyle
+import com.sricharan.dailyschedule.domain.reminderStyle
 import com.sricharan.dailyschedule.ui.components.rememberReminderPermissions
 import com.sricharan.dailyschedule.ui.components.soften
 import com.sricharan.dailyschedule.viewmodel.ScheduleViewModel
@@ -65,6 +67,11 @@ import kotlinx.coroutines.launch
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.RadioButton
+import androidx.compose.foundation.selection.selectable
 
 private val STORED_TIME = DateTimeFormatter.ofPattern("HH:mm")
 
@@ -94,7 +101,7 @@ fun AddEditScreen(
     var notes by remember { mutableStateOf("") }
     var isRecurring by remember { mutableStateOf(false) }
     var selectedDays by remember { mutableStateOf(setOf<String>()) }
-    var reminderEnabled by remember { mutableStateOf(false) }
+    var reminderStyle by remember { mutableStateOf(ReminderStyle.NONE) }
 
     // Something new lands on the day you were looking at — that's almost always
     // the day you meant. "Someday" stays one tap away in the date picker.
@@ -116,7 +123,7 @@ fun AddEditScreen(
                 notes = item.notes
                 isRecurring = item.isRecurring
                 selectedDays = item.recurrenceDaySet()
-                reminderEnabled = item.reminderEnabled
+                reminderStyle = item.reminderStyle
                 hasDate = item.dateTime != null
                 chosenDate = item.scheduledDate() ?: selectedDate
                 chosenTime = item.timeOfDay()
@@ -243,13 +250,11 @@ fun AddEditScreen(
                 onClick = { pickingTime = true }
             )
 
-            ToggleRow(
-                title = "A gentle nudge",
-                subtitle = "A quiet notification. Never a repeated alarm.",
-                checked = reminderEnabled,
-                onCheckedChange = { wanted ->
-                    reminderEnabled = wanted
-                    if (wanted &&
+            ReminderStylePicker(
+                selected = reminderStyle,
+                onSelect = { wanted ->
+                    reminderStyle = wanted
+                    if (wanted != ReminderStyle.NONE &&
                         Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                         !permissions.canNotify
                     ) {
@@ -258,13 +263,16 @@ fun AddEditScreen(
                 }
             )
 
-            if (reminderEnabled) {
+            if (reminderStyle != ReminderStyle.NONE) {
                 ReminderNote(
+                    style = reminderStyle,
                     arrivesAt = (chosenTime ?: DEFAULT_REMINDER_TIME).soften(),
                     usingDefaultTime = chosenTime == null,
                     hasSomewhereToLand = isRecurring || hasDate,
                     canNotify = permissions.canNotify,
-                    canBeExact = permissions.canBeExact,
+                    // An alarm books through setAlarmClock, which is exact by
+                    // definition — the exact-alarm caveat only applies to nudges.
+                    canBeExact = permissions.canBeExact || reminderStyle == ReminderStyle.ALARM,
                     onFixNotifications = {
                         context.startActivity(Reminders.notificationSettingsIntent(context))
                     },
@@ -299,7 +307,8 @@ fun AddEditScreen(
                         recurrenceTime = if (isRecurring) {
                             chosenTime?.format(STORED_TIME).orEmpty()
                         } else "",
-                        reminderEnabled = reminderEnabled,
+                        reminderEnabled = reminderStyle != ReminderStyle.NONE,
+                        alarmEnabled = reminderStyle == ReminderStyle.ALARM,
                         createdAt = existing?.createdAt ?: System.currentTimeMillis()
                     )
                     scope.launch {
@@ -373,6 +382,54 @@ private fun SoftField(
 }
 
 @Composable
+private fun ReminderStylePicker(
+    selected: ReminderStyle,
+    onSelect: (ReminderStyle) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "When it's time",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Spacer(Modifier.height(8.dp))
+
+        // Laid out top to bottom in increasing insistence, so picking the loud
+        // one is a deliberate step down the list rather than a default.
+        ReminderStyle.entries.forEach { style ->
+            val isSelected = style == selected
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.medium)
+                    .selectable(
+                        selected = isSelected,
+                        role = Role.RadioButton,
+                        onClick = { onSelect(style) }
+                    )
+                    .padding(vertical = 8.dp, horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(selected = isSelected, onClick = null)
+                Spacer(Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = style.label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = style.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ToggleRow(
     title: String,
     subtitle: String,
@@ -431,6 +488,7 @@ private fun DayChips(selectedDays: Set<String>, onToggle: (String, Boolean) -> U
  */
 @Composable
 private fun ReminderNote(
+    style: ReminderStyle,
     arrivesAt: String,
     usingDefaultTime: Boolean,
     hasSomewhereToLand: Boolean,
@@ -458,10 +516,13 @@ private fun ReminderNote(
                 )
             } else {
                 Text(
-                    text = if (usingDefaultTime) {
-                        "No time set, so this will arrive at $arrivesAt."
-                    } else {
-                        "This will arrive at $arrivesAt."
+                    text = when {
+                        style == ReminderStyle.ALARM && usingDefaultTime ->
+                            "No time set, so this will ring at $arrivesAt."
+                        style == ReminderStyle.ALARM ->
+                            "This will ring at $arrivesAt, and keep ringing until you answer."
+                        usingDefaultTime -> "No time set, so this will arrive at $arrivesAt."
+                        else -> "This will arrive at $arrivesAt."
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
