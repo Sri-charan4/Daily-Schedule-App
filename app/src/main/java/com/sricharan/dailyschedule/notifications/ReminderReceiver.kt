@@ -27,13 +27,30 @@ import java.time.LocalDate
 class ReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
+        // Database work can't happen on the main thread, and a receiver is dead
+        // the moment onReceive returns — goAsync() buys us that time.
+        val appContext = context.applicationContext
+
+        // The periodic self-check: no single item to nudge about, just a full
+        // rebuild in case the chain has been broken somewhere.
+        if (intent.action == ReminderScheduler.ACTION_HEARTBEAT) {
+            val beat = goAsync()
+            scope.launch {
+                try {
+                    ReminderSync.syncAll(appContext, deliverMissed = true)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Heartbeat rebuild failed", e)
+                } finally {
+                    beat.finish()
+                }
+            }
+            return
+        }
+
         val itemId = intent.getLongExtra(ReminderScheduler.EXTRA_ITEM_ID, -1L)
         if (itemId < 0) return
 
-        // Database work can't happen on the main thread, and a receiver is dead
-        // the moment onReceive returns — goAsync() buys us that time.
         val pending = goAsync()
-        val appContext = context.applicationContext
 
         scope.launch {
             try {

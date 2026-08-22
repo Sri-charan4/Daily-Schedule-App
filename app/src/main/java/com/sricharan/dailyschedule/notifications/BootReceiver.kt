@@ -33,7 +33,8 @@ class BootReceiver : BroadcastReceiver() {
 
         scope.launch {
             try {
-                ReminderSync.syncAll(appContext)
+                // The phone may have been off across a reminder's moment.
+                ReminderSync.syncAll(appContext, deliverMissed = true)
             } catch (e: Exception) {
                 Log.e(TAG, "Could not rebuild reminders after ${intent.action}", e)
             } finally {

@@ -485,8 +485,9 @@ private fun ReminderNote(
             if (!canBeExact) {
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "Without permission for exact alarms this will still " +
-                        "arrive, but the system may hold it back a while.",
+                    text = "Exact timing isn't allowed yet, so this will usually " +
+                        "arrive within a few minutes of the time you chose " +
+                        "rather than exactly on it.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface
                 )

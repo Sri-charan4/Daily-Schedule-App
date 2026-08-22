@@ -22,6 +22,9 @@ object ReminderScheduler {
 
     const val EXTRA_ITEM_ID = "itemId"
 
+    /** Marks the periodic self-check apart from a real item's alarm. */
+    const val ACTION_HEARTBEAT = "com.sricharan.dailyschedule.action.HEARTBEAT"
+
     /**
      * Books this item's next nudge. Returns the moment it was set for, or null
      * if there's nothing left to remind about.
@@ -68,6 +71,32 @@ object ReminderScheduler {
         return next
     }
 
+    /**
+     * A slow, repeating tick that just rebuilds every alarm from the database.
+     *
+     * The one-alarm-at-a-time chain has no redundancy: each firing books its
+     * successor, so a single lost firing ends that item's reminders for good.
+     * Plenty of things lose one -- an OEM battery manager killing the process
+     * mid-delivery, the system dropping an alarm under pressure. This is the
+     * net under that. It's deliberately inexact and infrequent, because being
+     * a few hours late to notice a problem costs nothing.
+     *
+     * It cannot help after a user force-stop: Android cancels every alarm the
+     * app holds and blocks its receivers until the app is opened by hand.
+     * Nothing scheduled from inside the app can survive that.
+     */
+    fun scheduleHeartbeat(context: Context) {
+        val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return
+        runCatching {
+            alarmManager.setInexactRepeating(
+                AlarmManager.RTC_WAKEUP,
+                System.currentTimeMillis() + AlarmManager.INTERVAL_HALF_DAY,
+                AlarmManager.INTERVAL_HALF_DAY,
+                heartbeatIntent(context)
+            )
+        }.onFailure { Log.w(TAG, "Could not book the heartbeat", it) }
+    }
+
     fun cancel(context: Context, itemId: Long) {
         val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return
         alarmManager.cancel(pendingIntent(context, itemId))
@@ -87,5 +116,18 @@ object ReminderScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+    /**
+     * Its own request code, far away from any item id, and an action that no
+     * item alarm sets -- so the heartbeat can never replace a real reminder.
+     */
+    private fun heartbeatIntent(context: Context): PendingIntent =
+        PendingIntent.getBroadcast(
+            context,
+            HEARTBEAT_REQUEST_CODE,
+            Intent(context, ReminderReceiver::class.java).setAction(ACTION_HEARTBEAT),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+    private const val HEARTBEAT_REQUEST_CODE = Int.MIN_VALUE
     private const val TAG = "ReminderScheduler"
 }

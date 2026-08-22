@@ -3,6 +3,7 @@ package com.sricharan.dailyschedule.domain
 import com.sricharan.dailyschedule.data.ScheduleItem
 import com.sricharan.dailyschedule.data.SkippedOccurrence
 import java.time.DayOfWeek
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -136,3 +137,60 @@ fun ScheduleItem.nextReminderAfter(
 }
 
 private const val SEARCH_HORIZON_DAYS = 400
+
+/**
+ * How long after a missed moment it's still worth mentioning it.
+ *
+ * Alarms don't survive the phone being off, so a 9am nudge on a phone that
+ * boots at 10am is simply gone: [nextReminderAfter] looks forward, sees the
+ * moment has passed, and quietly books tomorrow. Four hours is long enough to
+ * cover an overnight charge or a flat battery, and short enough that a morning
+ * routine never resurfaces in the evening as something to feel behind on.
+ */
+val MISSED_REMINDER_GRACE: Duration = Duration.ofHours(4)
+
+/**
+ * The moment this item *should* have nudged at, if that moment has already
+ * passed but is still within [graceWindow] of [now]. Null when nothing was
+ * missed, or when what was missed is old enough to leave alone.
+ *
+ * The counterpart to [nextReminderAfter]: that one looks forward to book the
+ * next alarm, this one looks back to catch the one the system never delivered.
+ * Both read the same item fields, so a day either arrives or is deliberately
+ * let go of -- it can't fall between the two.
+ */
+fun ScheduleItem.missedReminderBefore(
+    now: LocalDateTime,
+    skipped: Set<String> = emptySet(),
+    graceWindow: Duration = MISSED_REMINDER_GRACE
+): LocalDateTime? {
+    if (!reminderEnabled) return null
+    val earliest = now.minus(graceWindow)
+    val time = timeOfDay() ?: DEFAULT_REMINDER_TIME
+
+    // A moment counts as missed if it is at or before now, and after the point
+    // where we stop caring.
+    fun LocalDateTime.wasMissed() = !isAfter(now) && isAfter(earliest)
+
+    if (!isRecurring) {
+        val date = scheduledDate() ?: return null
+        return date.atTime(time).takeIf { it.wasMissed() }
+    }
+
+    // Walk backwards from today and stop at the first day that holds this
+    // item -- that's the most recent occurrence, which is the only one worth
+    // raising. A window measured in hours can only ever reach back a day or
+    // two, plus one for the walk to land on it.
+    var date = now.toLocalDate()
+    repeat(graceWindow.toDays().toInt() + 2) {
+        if (occursOn(date, skipped)) {
+            val moment = date.atTime(time)
+            if (moment.wasMissed()) return moment
+            // Today's occurrence still being ahead of us says nothing about
+            // yesterday's -- at 1am, an 11pm routine was missed last night.
+            // So keep walking rather than stopping here.
+        }
+        date = date.minusDays(1)
+    }
+    return null
+}

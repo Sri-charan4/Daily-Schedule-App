@@ -21,9 +21,18 @@ import com.sricharan.dailyschedule.notifications.Reminders
  */
 data class ReminderPermissions(
     val canNotify: Boolean,
-    val canBeExact: Boolean
+    val canBeExact: Boolean,
+    val isUnrestricted: Boolean
 ) {
-    val allGood: Boolean get() = canNotify && canBeExact
+    /**
+     * Only the first is truly required. Without exact alarms a reminder still
+     * arrives, just a few minutes adrift, and battery exemption is a hedge
+     * against OEM behaviour rather than a permission as such — so neither one
+     * gets to call the setup broken.
+     */
+    val canReachYou: Boolean get() = canNotify
+
+    val allGood: Boolean get() = canNotify && canBeExact && isUnrestricted
 }
 
 @Composable
@@ -43,7 +52,8 @@ fun rememberReminderPermissions(): ReminderPermissions {
     return remember(resumeCount) {
         ReminderPermissions(
             canNotify = Reminders.canPostNotifications(context),
-            canBeExact = Reminders.canScheduleExactAlarms(context)
+            canBeExact = Reminders.canScheduleExactAlarms(context),
+            isUnrestricted = Reminders.isUnrestricted(context)
         )
     }
 }

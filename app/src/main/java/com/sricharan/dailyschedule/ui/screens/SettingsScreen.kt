@@ -75,11 +75,15 @@ fun SettingsScreen(onBack: () -> Unit) {
                 style = MaterialTheme.typography.titleMedium
             )
             Text(
-                if (permissions.allGood) {
-                    "Reminders can reach you, at the times you set."
-                } else {
-                    "Android needs a couple of permissions before a reminder can " +
-                        "actually arrive."
+                when {
+                    permissions.allGood ->
+                        "Reminders can reach you, at the times you set."
+                    !permissions.canReachYou ->
+                        "Notifications are switched off for this app, so no reminder " +
+                            "can arrive at all. That one matters."
+                    else ->
+                        "Reminders will arrive. The settings below only affect how " +
+                            "close to the minute they land."
                 },
                 style = MaterialTheme.typography.bodyMedium
             )
@@ -104,6 +108,47 @@ fun SettingsScreen(onBack: () -> Unit) {
                     Reminders.exactAlarmSettingsIntent(context)?.let { context.startActivity(it) }
                 }
             )
+            if (!permissions.canBeExact) {
+                Text(
+                    "Without this, a nudge still arrives — usually within a few " +
+                        "minutes of the time you chose, rather than exactly on it.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            PermissionRow(
+                label = "Keep running in the background",
+                granted = permissions.isUnrestricted,
+                fixLabel = "Settings",
+                onFix = { context.startActivity(Reminders.batterySettingsIntent()) }
+            )
+            if (!permissions.isUnrestricted) {
+                Text(
+                    "Some phones — Samsung especially — put apps to sleep after a " +
+                        "few days unused, which cancels their reminders. Choosing " +
+                        "this app and setting it to \"Unrestricted\" prevents that.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // The whole point: reminders are otherwise unverifiable until the
+            // moment they were meant to arrive, and a no-show tells you nothing
+            // about which of the settings above was the reason.
+            TextButton(
+                onClick = {
+                    val sent = Reminders.sendTest(context)
+                    Toast.makeText(
+                        context,
+                        if (sent) {
+                            "Sent — check your notification shade."
+                        } else {
+                            "Nothing was sent: notifications are switched off for this app."
+                        },
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            ) { Text("Send a test reminder") }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
