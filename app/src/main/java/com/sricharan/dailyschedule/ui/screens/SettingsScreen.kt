@@ -24,6 +24,13 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.material3.Slider
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.Icons
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,6 +42,27 @@ fun SettingsScreen(onBack: () -> Unit) {
     val permissions = rememberReminderPermissions()
     val alarmPrefs = remember { AlarmPreferences(context) }
     var snoozeMinutes by remember { mutableIntStateOf(alarmPrefs.snoozeMinutes) }
+    var explainingAlarms by remember { mutableStateOf(false) }
+
+    if (explainingAlarms) {
+        AlertDialog(
+            onDismissRequest = { explainingAlarms = false },
+            title = { Text("How alarms work") },
+            text = {
+                Text(
+                    "An alarm rings for $RING_DURATION_MINUTES minutes, at alarm volume, " +
+                        "even if your phone is silent.\n\n" +
+                        "If you don't answer it, it waits for the snooze you've set and " +
+                        "tries again — $MAX_UNANSWERED_RINGS rings in all.\n\n" +
+                        "After that it stops and lets the day go, the same as if you'd set " +
+                        "it down yourself. Your routine stays exactly as it was."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { explainingAlarms = false }) { Text("Alright") }
+            }
+        )
+    }
 
     val notificationRequest = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -165,16 +193,25 @@ fun SettingsScreen(onBack: () -> Unit) {
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
-            Text(
-                "Alarms",
-                style = MaterialTheme.typography.titleMedium
-            )
-            Text(
-                "An alarm rings for $RING_DURATION_MINUTES minutes. If you don't answer it, " +
-                    "it waits and tries again — up to $MAX_UNANSWERED_RINGS times in all, " +
-                    "and then it lets the day go rather than keep at you.",
-                style = MaterialTheme.typography.bodyMedium
-            )
+            // The rules an alarm follows are worth being able to look up, and
+            // not worth a paragraph of screen every time you visit Settings.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Alarms",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                IconButton(
+                    onClick = { explainingAlarms = true },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Info,
+                        contentDescription = "How alarms work",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
 
             Text(
                 text = if (snoozeMinutes == 1) {
